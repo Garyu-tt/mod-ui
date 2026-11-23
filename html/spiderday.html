@@ -17,12 +17,18 @@ h1{font-size:1.7rem}h2{font-size:1.1rem}
 .slot input{margin-right:7px}
 pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#101925;padding:12px;border-radius:8px;max-height:320px;overflow:auto}
 small{color:#b5c4d6}
+#chain{display:flex;align-items:center;gap:8px;overflow-x:auto;padding:16px 0;min-height:75px}
+.graph-node{flex:0 0 auto;padding:12px 15px;border:1px solid #6e96bc;background:#29435d;border-radius:10px;text-align:center;min-width:70px;font-weight:600}
+.graph-node.terminal{background:#1d4850;border-color:#4d9b94}
+.graph-arrow{color:#9db6d0;font-size:1.3rem;flex:0 0 auto}
+#graph-meta{margin:4px 0 12px;color:#b5c4d6}
+#slots label:focus-within{outline:2px solid #8bc9ff;outline-offset:2px}
 </style>
 </head>
 <body>
 <header><h1>Spider Day <small>MOD UI bridge</small></h1><a href="/mod/">← MOD UI</a></header>
 <section><h2>Raspberry Pi / Spider V 20</h2><p id="status" role="status">Connecting…</p><button id="refresh">Refresh</button><p><small>Read-only integration. No firmware writes or effect changes.</small></p></section>
-<section><h2>Stock DSP slots</h2><p><small>Choose which existing stock slots appear in the preview chain. The order is fixed by the stock profile.</small></p><div id="slots"></div><p><button id="compile" disabled>Validate graph preview</button></p><pre id="preview">No graph compiled.</pre></section>
+<section><h2>Stock DSP slots</h2><p><small>Choose which existing stock slots appear in the preview chain. The order is fixed by the stock profile.</small></p><div id="slots"></div><h3>Signal chain preview</h3><div id="chain" role="img" aria-label="Stock DSP signal chain"></div><p id="graph-meta" role="status"></p><p><button id="compile" disabled>Validate graph preview</button></p><pre id="preview">No graph compiled.</pre></section>
 <section><h2>Legacy bridge</h2><pre id="legacy">Checking…</pre></section>
 <script>
 "use strict";
@@ -35,6 +41,17 @@ async function json(path, options) {
   if(!r.ok)throw Error(body.error||("HTTP "+r.status));
   return body;
 }
+function renderGraph(){
+  const graph=buildGraph();
+  const chain=$("chain");
+  chain.replaceChildren();
+  for(const [index,node] of graph.nodes.entries()){
+    if(index){const arrow=document.createElement("span");arrow.className="graph-arrow";arrow.textContent="→";arrow.setAttribute("aria-hidden","true");chain.append(arrow);}
+    const el=document.createElement("span");el.className="graph-node"+(node.type==="input"||node.type==="output"?" terminal":"");el.textContent=node.type;chain.append(el);
+  }
+  chain.setAttribute("aria-label",graph.nodes.map(n=>n.type).join(" to "));
+  $("graph-meta").textContent=graph.nodes.length+" nodes · "+graph.edges.length+" connections · stock DSP fixed order · preview only";
+}
 function buildGraph(){
   const types=order.filter(type=>type==="input"||type==="output"||document.querySelector('input[data-slot="'+type+'"]').checked);
   const nodes=types.map(type=>({id:type,type}));
@@ -45,6 +62,7 @@ for(const type of order.filter(x=>x!=="input"&&x!=="output")){
   label.className="slot";
   const input=document.createElement("input");
   input.type="checkbox";input.dataset.slot=type;input.checked=true;
+  input.addEventListener("change",()=>{renderGraph();$("preview").textContent="Graph changed. Validate to refresh preview.";});
   label.append(input,document.createTextNode(type));
   $("slots").append(label);
 }
@@ -68,6 +86,7 @@ $("compile").addEventListener("click",async()=>{
     $("preview").textContent=JSON.stringify(result,null,2);
   }catch(e){$("preview").textContent="Graph rejected: "+e.message;}
 });
+renderGraph();
 refresh();
 </script>
 </body>
