@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spider Day | MOD UI</title>
+<style>
+:root{color-scheme:dark;font:15px system-ui,sans-serif;background:#111723;color:#e7edf7}
+body{max-width:980px;margin:0 auto;padding:24px}
+header{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+a{color:#8bc9ff}button{background:#244c7a;color:#fff;border:1px solid #4774a8;border-radius:8px;padding:9px 15px;cursor:pointer}
+button:disabled{opacity:.5;cursor:not-allowed}
+section{background:#1c2737;border:1px solid #324259;border-radius:12px;padding:20px;margin:16px 0}
+h1{font-size:1.7rem}h2{font-size:1.1rem}
+#slots{display:flex;flex-wrap:wrap;gap:8px}
+.slot{border:1px solid #49617c;background:#26364a;border-radius:10px;padding:12px}
+.slot input{margin-right:7px}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#101925;padding:12px;border-radius:8px;max-height:320px;overflow:auto}
+small{color:#b5c4d6}
+</style>
+</head>
+<body>
+<header><h1>Spider Day <small>MOD UI bridge</small></h1><a href="/">← MOD UI</a></header>
+<section><h2>Raspberry Pi / Spider V 20</h2><p id="status" role="status">Connecting…</p><button id="refresh">Refresh</button><p><small>Read-only integration. No firmware writes or effect changes.</small></p></section>
+<section><h2>Stock DSP slots</h2><p><small>Choose which existing stock slots appear in the preview chain. The order is fixed by the stock profile.</small></p><div id="slots"></div><p><button id="compile" disabled>Validate graph preview</button></p><pre id="preview">No graph compiled.</pre></section>
+<section><h2>Legacy bridge</h2><pre id="legacy">Checking…</pre></section>
+<script>
+"use strict";
+const order=["input","gate","comp","stomp","amp","mod","delay","reverb","wah","eq","volume","output"];
+const $=id=>document.getElementById(id);
+const base="/spiderday";
+async function json(path, options) {
+  const r=await fetch(base+path,{credentials:"same-origin",...options});
+  const body=await r.json();
+  if(!r.ok)throw Error(body.error||("HTTP "+r.status));
+  return body;
+}
+function buildGraph(){
+  const types=order.filter(type=>type==="input"||type==="output"||document.querySelector('input[data-slot="'+type+'"]').checked);
+  const nodes=types.map(type=>({id:type,type}));
+  return {nodes,edges:nodes.slice(1).map((node,i)=>({source:nodes[i].id,target:node.id}))};
+}
+for(const type of order.filter(x=>x!=="input"&&x!=="output")){
+  const label=document.createElement("label");
+  label.className="slot";
+  const input=document.createElement("input");
+  input.type="checkbox";input.dataset.slot=type;input.checked=true;
+  label.append(input,document.createTextNode(type));
+  $("slots").append(label);
+}
+async function refresh(){
+  $("status").textContent="Connecting…";
+  try {
+    const [health,device]=await Promise.all([json("/api/health"),json("/api/device")]);
+    $("status").textContent=(health.device_connected?"USB connected":"USB not detected")+
+      " · "+(device.devices[0]?.product||"Spider V 20")+" · DSP writes disabled";
+    $("compile").disabled=false;
+  }catch(e){$("status").textContent="Backend unavailable: "+e.message;$("compile").disabled=true;}
+  try{
+    const state=await json("/api/legacy/state");
+    $("legacy").textContent=JSON.stringify({connected:state.connected,ready:state.ready,effects:state.effects,parameter_revision:state.parameter_revision},null,2);
+  }catch(e){$("legacy").textContent="Legacy bridge offline: "+e.message;}
+}
+$("refresh").addEventListener("click",refresh);
+$("compile").addEventListener("click",async()=>{
+  try{
+    const result=await json("/api/graph/compile",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(buildGraph())});
+    $("preview").textContent=JSON.stringify(result,null,2);
+  }catch(e){$("preview").textContent="Graph rejected: "+e.message;}
+});
+refresh();
+</script>
+</body>
+</html>
